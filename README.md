@@ -10,7 +10,7 @@ Moni-Py is a lightweight Python application that monitors for screens connected 
 
 ## Installation
 
-$bash```
+```
 git clone https://github.com/[your-username]/moni-py.git
 cd moni-py
 pip install -r requirements.txt
@@ -18,7 +18,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-$bash```
+```
 python moni-py
 ```
 
