@@ -21,23 +21,19 @@ class DisplayManager:
 
             self.check_for_extensions()
             self.displays = self.get_connected_displays()
+            if any(display["status"] == "inactive" for display
+                   in self.displays):
+                self.event_handler("initial_display_added")
+
         except Exception as e:
             self.logger.error(f"Error initializing DisplayManager: {e}")
             raise
-
-    def run_pre_monitor(self):
-        active_displays = [
-            display for display in self.displays
-            if display.get("status") != "inactive"
-            ]
-        if len(self.displays) > len(active_displays):
-            self.event_handler("initial_display_added")
 
     def start_monitoring(self):
         while True:
             event = self.display.next_event()
             if event:
-                self.logger.info(event)
+                self.logger.info(f"EVENT: {event}")
                 self.process_event(event)
 
     def set_event_handler(self, event_handler):
@@ -46,16 +42,16 @@ class DisplayManager:
     def process_event(self, event):
         if event.type == X.ConfigureNotify:
             self.update_display_info()
-            primary_display = self.get_primary_display()
             if self.all_displays_inactive():
+                primary_display = self.get_primary_display()
                 if primary_display:
                     self.turn_on_display(
                         primary_display['name'],
                         primary_display['modes'],
-                        primary_display['type']
+                        primary_display['crtc']
                     )
                 else:
-                    self.turn_on_first_display()
+                    self.logger.error("No primary display found.")
             elif self.new_display_added():
                 self.event_handler("display_added")
 
@@ -87,21 +83,72 @@ class DisplayManager:
             self.logger.error(f"Error checking for extensions: {e}")
             raise
 
-    def turn_on_display(self, name, mode):
-        index = self.display.intern_atom(name)
-        root = self.display.screen(index)
-        event = self.display.XEvent()
-        event.type = self.display._NET_WM_STATE_ON
-        event.detail = mode
-        self.display.send_event(root, event)
+    def get_position_based_on_primary(self, position):
+        primary_display = self.get_primary_display()
+        if not primary_display:
+            self.logger.error("No primary display found.")
+            return None
 
-    def turn_off_display(self, display_name):
-        display_number = self.display.intern_atom(display_name)
-        root = self.display.screen(display_number)
-        event = self.display.XEvent()
-        event.type = self.display._NET_WM_STATE_OFF
-        event.detail = 0
-        self.display.send_event(root, event)
+        if position == "right":
+            return primary_display['modes'][0].width, 0
+        elif position == "left":
+            return -primary_display['modes'][0].width, 0
+        elif position == "up":
+            return 0, -primary_display['modes'][0].height
+        elif position == "down":
+            return 0, primary_display['modes'][0].height
+
+    def turn_on_display(self, name, mode, crtc, position=None):
+        resources = self.root_window.xrandr_get_screen_resources()
+        crtc_list = [display["crtc"] for display in self.displays]
+        matching_output = []
+        x, y = 0, 0
+        crtc = crtc
+        if position:
+            pos = self.get_position_based_on_primary(position)
+            if pos is not None:
+                x, y = pos
+
+        for output in resources.outputs:
+            output_info = self.get_output_info(output)
+            if output_info.connection == randr.Connected                      \
+                    and name == output_info.name:
+                matching_output.append(output)
+                for resource in resources.crtcs:
+                    if resource not in crtc_list:
+                        crtc = resource
+
+        randr.set_crtc_config(
+            self.display,
+            crtc,
+            X.CurrentTime,
+            x=x,
+            y=y,
+            mode=mode.id,
+            rotation=randr.Rotate_0,
+            outputs=matching_output
+            )
+
+    def turn_off_display(self, name, crtc):
+        resources = self.root_window.xrandr_get_screen_resources()
+        matching_output = []
+        x, y = 0, 0
+        for output in resources.outputs:
+            output_info = self.get_output_info(output)
+            if output_info.connection == randr.Connected                      \
+                    and name == output_info.name:
+                matching_output.append(output)
+
+        randr.set_crtc_config(
+            self.display,
+            crtc,
+            X.CurrentTime,
+            x=x,
+            y=y,
+            mode=0,
+            rotation=randr.Rotate_0,
+            outputs=matching_output
+            )
 
     def get_output_info(self, output):
         return randr.get_output_info(
@@ -109,18 +156,19 @@ class DisplayManager:
 
     def get_display_info(self, output_info, primary_output, resources):
         display_name = output_info.name
-        display_type = "primary" if output_info == primary_output \
+        display_type = "primary" if output_info == primary_output             \
             else "extended"
-        display_status = "active" if output_info.crtc != 0 \
+        display_status = "active" if output_info.crtc != 0                    \
             else "inactive"
 
         modes = self.get_modes(output_info, resources)
 
         return {
-            'name': display_name,
-            'modes': modes,
-            'type': display_type,
-            'status': display_status
+            "name": display_name,
+            "modes": modes,
+            "type": display_type,
+            "status": display_status,
+            "crtc": output_info.crtc,
         }
 
     def get_modes(self, output_info, resources):
@@ -142,13 +190,6 @@ class DisplayManager:
     def all_displays_inactive(self):
         return all(
                 display["status"] == "inactive" for display in self.displays)
-
-    def turn_on_first_display(self):
-        self.turn_on_display(
-            self.displays[0].get("name"),
-            self.displays[0].get("modes"),
-            self.displays[0].get("type"),
-        )
 
     def new_display_added(self):
         return len(self.prev_connected_displays) < len(self.displays)
