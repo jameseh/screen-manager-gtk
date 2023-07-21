@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import sys
 
 from Xlib import X
@@ -57,14 +56,13 @@ class DisplayManager:
 
     def get_connected_displays(self):
         resources = self.root_window.xrandr_get_screen_resources()
-        primary_output = resources.crtcs[0]
         displays = []
 
         for output in resources.outputs:
             output_info = self.get_output_info(output)
             if output_info.connection == randr.Connected:
                 display_info = self.get_display_info(
-                        output_info, primary_output, resources)
+                        output_info, resources)
                 displays.append(display_info)
 
         return displays
@@ -98,14 +96,14 @@ class DisplayManager:
         elif position == "down":
             return 0, primary_display['modes'][0].height
 
-    def turn_on_display(self, name, mode, crtc, position=None):
+    def turn_on_display(self, name, mode, crtc, layout="right"):
         resources = self.root_window.xrandr_get_screen_resources()
         crtc_list = [display["crtc"] for display in self.displays]
         matching_output = []
         x, y = 0, 0
         crtc = crtc
-        if position:
-            pos = self.get_position_based_on_primary(position)
+        if layout:
+            pos = self.get_position_based_on_primary(layout)
             if pos is not None:
                 x, y = pos
 
@@ -154,11 +152,12 @@ class DisplayManager:
         return randr.get_output_info(
             self.display, output, X.CurrentTime)
 
-    def get_display_info(self, output_info, primary_output, resources):
+    def get_display_info(self, output_info, resources):
+        primary_output = resources.crtcs[0]
         display_name = output_info.name
-        display_type = "primary" if output_info == primary_output             \
+        display_type = "primary" if output_info.crtc == primary_output  \
             else "extended"
-        display_status = "active" if output_info.crtc != 0                    \
+        display_status = "active" if output_info.crtc != 0  \
             else "inactive"
 
         modes = self.get_modes(output_info, resources)

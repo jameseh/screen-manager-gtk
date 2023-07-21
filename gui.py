@@ -1,10 +1,8 @@
 import sys
-from math import ceil
 
 import gi
-
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib, Gdk
+from gi.repository import Gtk, GLib
 
 
 class GUI:
@@ -56,92 +54,111 @@ class GUI:
                 Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
         self.stack.set_transition_duration(200)
         self.stack.set_size_request(520, 160)
+
         stack_switcher = Gtk.StackSwitcher()
         stack_switcher.set_stack(self.stack)
 
-        self.main_box.pack_start(stack_switcher, True, True, 0)
-        self.main_box.pack_start(self.stack, True, True, 1)
+        self.main_box.pack_start(stack_switcher, False, False, 0)
+        self.main_box.pack_start(self.stack, False, False, 1)
 
         self.submit_button = Gtk.Button(label="Submit")
         self.submit_button.connect("clicked", self.submit)
 
     def setup_menubar(self, display_info, i):
-        menubar = Gtk.MenuBar()
-        menubar.set_pack_direction(Gtk.PackDirection.RTL)
-        menubar.set_size_request(520, 0)
-        menubar.set_take_focus(True)
+        display_status = display_info["status"]
+        display_type = display_info["type"]
 
-        status_check_menu_item = Gtk.CheckMenuItem.new_with_label(
-                display_info["status"])
-        if display_info["status"] == "active":
-            status_check_menu_item.set_active(True)
-            self.initial_active_states.append(True)
-        else:
-            status_check_menu_item.set_active(False)
-            self.initial_active_states.append(False)
+        box = Gtk.Box(spacing=0)
+        box.set_homogeneous(False)
+        box.set_size_request(520, 0)
+
+        menubar_left = Gtk.MenuBar()
+        menubar_right = Gtk.MenuBar()
 
         flags_menu = Gtk.Menu()
-        flags_item = Gtk.MenuItem(label='filter')
-        flags_item.set_submenu(flags_menu)
+        flags_menuitem = Gtk.MenuItem(label='filter')
+        flags_menuitem.set_submenu(flags_menu)
 
-        menubar.append(Gtk.SeparatorMenuItem())
-        menubar.append(flags_item)
-        menubar.append(Gtk.SeparatorMenuItem())
-        menubar.append(status_check_menu_item)
+        check_menuitem = Gtk.CheckMenuItem.new_with_label(" status:")
+        status_menuitem = Gtk.MenuItem.new_with_label("")
+
+        if display_status == "active":
+            initial_state = True
+        else:
+            initial_state = False
+        check_menuitem.set_active(initial_state)
+        self.initial_active_states.append(initial_state)
 
         flag_items = [
             (flag, description, Gtk.CheckMenuItem(label=description))
             for flag, description in self.FLAGS.items()
-        ]
+            ]
         for _, _, check_menu_item in flag_items:
             check_menu_item.connect(
                     "toggled", self.update_display_modes)
             flags_menu.append(check_menu_item)
         self.flags_check_menu_items.append(flag_items)
 
-        layout_menu = Gtk.Menu()
-        layout_item = Gtk.MenuItem(label="layout")
-        layout_item.set_submenu(layout_menu)
-        menubar.append(layout_item)
-        menubar.append(Gtk.SeparatorMenuItem())
+        if display_type == "extended":
+            layout_menu = Gtk.Menu()
+            layout_menuitem = Gtk.MenuItem(label="layout")
+            layout_menuitem.set_submenu(layout_menu)
 
-        if display_info["type"] == "extended":
             layouts = ["clone", "left", "right", "above", "below"]
+            group = None
             for layout in layouts:
-                layout_check_button = Gtk.CheckMenuItem(label=layout)
-                layout_menu.append(layout_check_button)
-                layout_item.connect("select", lambda x: self.layout_changed)
-        return menubar, status_check_menu_item
+                layout_radioitem = Gtk.RadioMenuItem \
+                    .new_with_label_from_widget(group, layout)
+                layout_radioitem.connect(
+                    "toggled",
+                    lambda radio_item=layout_radioitem,
+                    i=i: self.layout_changed(layout_menuitem, radio_item, i)
+                    )
+                group = layout_radioitem
+                layout_menu.append(layout_radioitem)
+            menubar_right.append(layout_menuitem)
+
+        menubar_left.append(check_menuitem)
+        menubar_left.append(status_menuitem)
+
+        menubar_right.append(Gtk.SeparatorMenuItem())
+        menubar_right.append(flags_menuitem)
+
+        box.pack_start(menubar_left, True, True, 0)
+        box.pack_end(menubar_right, False, False, 0)
+
+        return box, check_menuitem, status_menuitem
 
     def apply_css_to_widget(self, widget, color):
         css = f"""
         #status {{
             color: {color};
+            font-style: oblique;
+            opacity: 0.8;
         }}
         """
-        self.css_provider.load_from_data(bytes(css.encode()))
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_data(bytes(css.encode()))
         widget.set_name("status")
         Gtk.StyleContext.add_provider(
             widget.get_style_context(),
-            self.css_provider,
+            css_provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
             )
 
-    def update_display_status(self, menuitem, i):
-        if menuitem.get_active():
-            self.apply_css_to_widget(menuitem, "green")
-            self.toggle_display(menuitem, i)
-        else:
-            self.apply_css_to_widget(menuitem, "red")
-            self.toggle_display(menuitem, i)
-
-        self.window.queue_draw()
+    def update_display_status(self, check_menuitem, status_menuitem, i):
+        is_active = check_menuitem.get_active()
+        color = "green" if is_active else "red"
+        self.apply_css_to_widget(status_menuitem.get_child(), color)
+        status_menuitem.set_label("active" if is_active else "inactive")
+        self.toggle_modes(check_menuitem, i)
+        status_menuitem.queue_draw()
 
     def create_display_box(self, display_info, i):
         display_box = Gtk.Box(
-                orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+                orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         display_grid = Gtk.Grid()
-        display_box.pack_start(display_grid, True, True, 0)
+        display_box.pack_start(display_grid, False, False, 0)
         display_grid.set_size_request(400, 160)
 
         # Add the display box to the stack
@@ -149,7 +166,8 @@ class GUI:
                 display_box, display_info["name"], display_info["name"]
                 )
 
-        menubar, check_menu_item = self.setup_menubar(display_info, i)
+        menubar, check_menuitem, status_menuitem = self.setup_menubar(
+                display_info, i)
         display_grid.attach(menubar, 0, 0, 1, 1)
 
         # Create a new container for the modes.
@@ -165,7 +183,7 @@ class GUI:
         scrolled_window.add(mode_box)
 
         display_grid.attach(scrolled_window, 0, 1, 2, 1)
-        return display_box, mode_box, check_menu_item
+        return display_box, mode_box, check_menuitem, status_menuitem
 
     def create_mode_objects(self, modes, mode_box):
         mode_group = None
@@ -192,7 +210,7 @@ class GUI:
     def show(self):
         try:
             for i, display_info in enumerate(self.displays):
-                display_box, mode_box, check_menuitem = \
+                display_box, mode_box, check_menuitem, status_menuitem = \
                     self.create_display_box(display_info, i)
                 modes = sorted(
                         display_info["modes"],
@@ -203,16 +221,19 @@ class GUI:
                 self.display_mode_objects.append(display_modes_list)
 
                 self.selected_displays.append(
-                        (display_info["name"], check_menuitem,
+                        (display_info["name"],
+                         (check_menuitem, status_menuitem),
                          display_modes_list, display_info["type"],
                          display_info["status"], display_info["crtc"],
                          None)
                         )
                 check_menuitem.connect(
-                        "toggled",
-                        lambda check_button, i=i: self.update_display_status(
-                            check_button, i)
-                        )
+                    "toggled",
+                    lambda check_menuitem=check_menuitem,
+                    status_menuitem=status_menuitem, i=i:
+                    self.update_display_status(
+                        check_menuitem, status_menuitem, i)
+                    )
 
             input_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
             input_box.set_halign(Gtk.Align.END)
@@ -228,12 +249,11 @@ class GUI:
 
             # Set check check_menuitems if display is active
             for i, display_info in enumerate(self.displays):
-                check_menuitem = self.selected_displays[i][1]
-                if display_info["status"] == "active":
-                    self.apply_css_to_widget(check_menuitem, "green")
-                    self.toggle_display(check_menuitem, i)
-                else:
-                    self.apply_css_to_widget(check_menuitem, "red")
+                check_menuitem = self.selected_displays[i][1][0]
+                status_menuitem = self.selected_displays[i][1][1]
+                self.update_display_status(check_menuitem, status_menuitem, i)
+                if self.initial_active_states[i]:
+                    self.toggle_modes(check_menuitem, i)
 
             self.window.show_all()
             self.update_display_modes(None)
@@ -265,10 +285,10 @@ class GUI:
             )
         return sorted_modes
 
-    def toggle_display(self, widget, i):
+    def toggle_modes(self, widget, i):
         state = widget.get_active()
         display_info = self.selected_displays[i]
-        display_name, display_check_button, _, display_type, display_status,  \
+        display_name, status_elements, _, display_type, display_status,  \
             display_crtc, selected_mode = display_info
 
         for mode, mode_menu_item in self.display_mode_objects[i]:
@@ -292,17 +312,18 @@ class GUI:
 
             if selected_mode:
                 self.selected_displays[i] = (
-                        display_name,  display_check_button,
+                        display_name,  status_elements,
                         self.display_mode_objects[i], display_type,
                         display_status, display_crtc, selected_mode,
                         )
         self.window.queue_draw()
 
-    def layout_changed(self, combobox, i):
-        if i < len(self.displays):
-            self.display_layouts.append(combobox.get_active_text())
-        else:
-            self.display_layouts[i] = combobox.get_active_text()
+    def layout_changed(self, label, menuitem, i):
+        if menuitem.get_active():
+            text = menuitem.get_label()
+            label.set_label(f"layout: {text}")
+            self.display_layouts.append(text)
+            menuitem.queue_draw()
 
     def update_display_modes(self, widget):
         for i, display_info in enumerate(self.displays):
@@ -362,11 +383,11 @@ class GUI:
         unselected_displays = []
 
         for display_info in self.selected_displays:
-            display_name, display_check_button, display_modes, display_type,  \
+            display_name, status_elements, display_modes, display_type,  \
                     display_status, display_crtc, selected_mode = display_info
-            if display_check_button.get_active():
+            if status_elements[0].get_active():
                 selected_displays.append(
-                    (display_name, display_check_button, display_modes,
+                    (display_name, status_elements, display_modes,
                      display_type, display_status, display_crtc, selected_mode)
                 )
             else:

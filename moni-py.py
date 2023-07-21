@@ -7,7 +7,7 @@ from display_manager import DisplayManager
 from gui import GUI
 
 
-class MoniPy:
+class ScreenManagerGTK:
     def __init__(self):
         self.event_queue = queue.Queue()
         self.logger = Logger()
@@ -19,7 +19,7 @@ class MoniPy:
                 self.logger
                 )
 
-    def turn_on_display(self, name, mode, crtc):
+    def turn_on_display(self, name, mode, crtc, layout="right"):
         self.disp_mgr.turn_on_display(name, mode, crtc)
 
     def turn_off_display(self, name, crtc):
@@ -48,7 +48,7 @@ class MoniPy:
 
 
 def main():
-    moni_py = MoniPy()
+    moni_py = ScreenManagerGTK()
     moni_py.start()
 
 
