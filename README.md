@@ -1,8 +1,8 @@
 # Screen-Manager-GTK
-[float]
+[caption left]
 ![screen-manager-gtk screenshot](/screenshots/screen-manager-gtk-00.png)
 Screen-Manager-GTK is a lightweight Python application that monitors for screens connected to your computer. When a new screen is connected, a GTK window pops up that allows you to select the state and mode of the screen.
-[/float]
+[/caption]
 
 ## Requirements
 
